@@ -106,15 +106,16 @@ int main(int argc,char **argv){
     load_symbols(argv[1]);
 
     int status;
+    int rewind;
     wait(&status);
+    rewind=0;
     while(1){
         if(WIFSTOPPED(status)){
-            long rip=get_regs(pid).rip-1;
-            for(int i=0;i<bp_count;i++){
-                if(bp[i].addr==rip){
-                    ptrace(PTRACE_POKEUSER,pid,8*RIP,rip);
-                    break;
-                }
+            long rip=get_regs(pid).rip;
+            if(rewind){
+                rip--;
+                ptrace(PTRACE_POKEUSER,pid,8*RIP,rip);
+                rewind=0;
             }
             printf("Program stopped at %s\n",show(rip));
         }else if(WIFEXITED(status)){
@@ -142,6 +143,7 @@ int main(int argc,char **argv){
             set_bp(pid,rip);
             ptrace(PTRACE_CONT,pid,NULL,NULL);
             wait(&status);
+            rewind=1;
         }else if(strcmp(command,"q")==0){//quit
             exit(0);
         }else if(strcmp(command,"s")==0){//step
