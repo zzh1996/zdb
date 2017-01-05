@@ -4,6 +4,7 @@
 #include <sys/wait.h>
 #include <bfd.h>
 #include <sys/user.h>
+#include <sys/reg.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -39,7 +40,7 @@ void load_symbols(char *path){
     symbol_table=malloc(count*sizeof(struct symbol));
     for(int i=0;i<count;i++){
         symbol_table[i].name=bfd_asymbol_name(symbols[i]);
-        symbol_table[i].addr=bfd_asymbol_value(symbols[i]);
+        symbol_table[i].addr=bfd_asymbol_value(symbols[i])+0x555555554000;
     }
     symbol_count=count;
 }
@@ -63,12 +64,35 @@ char *show(long addr){
             break;
         }
     }
-    static char s[100];
+    char *s=malloc(100);
     if(name)
         sprintf(s,"%s(0x%lx)",name,addr);
     else
         sprintf(s,"0x%lx",addr);
     return s;
+}
+
+void set_bp(pid_t pid,long addr){
+    for(int i=0;i<bp_count;i++){
+        if(bp[i].addr==addr){
+            long data=ptrace(PTRACE_PEEKTEXT,pid,addr,NULL);
+            bp[i].olddata=data&0xFF;
+            data=(data&~0xFFL)|0xCC;
+            ptrace(PTRACE_POKETEXT,pid,addr,data);
+            return;
+        }
+    }
+}
+
+void reset_bp(pid_t pid,long addr){
+    for(int i=0;i<bp_count;i++){
+        if(bp[i].addr==addr){
+            long data=ptrace(PTRACE_PEEKTEXT,pid,addr,NULL);
+            data=(data&~0xFFL)|bp[i].olddata;
+            ptrace(PTRACE_POKETEXT,pid,addr,data);
+            return;
+        }
+    }
 }
 
 int main(int argc,char **argv){
@@ -85,7 +109,14 @@ int main(int argc,char **argv){
     wait(&status);
     while(1){
         if(WIFSTOPPED(status)){
-            printf("Program stopped at %s\n",show(get_regs(pid).rip));
+            long rip=get_regs(pid).rip-1;
+            for(int i=0;i<bp_count;i++){
+                if(bp[i].addr==rip){
+                    ptrace(PTRACE_POKEUSER,pid,8*RIP,rip);
+                    break;
+                }
+            }
+            printf("Program stopped at %s\n",show(rip));
         }else if(WIFEXITED(status)){
             printf("Program exited\n");
             exit(0);
@@ -100,19 +131,55 @@ int main(int argc,char **argv){
                 printf("Unknown address: %s\n",arg);
                 continue;
             }
-            long data=ptrace(PTRACE_PEEKTEXT,pid,addr,NULL);
-            bp[bp_count].olddata=data&0xFF;
             bp[bp_count++].addr=addr;
-            data=(data&~0xFFL)|0xCC;
-            ptrace(PTRACE_POKETEXT,pid,addr,data);
+            set_bp(pid,addr);
             printf("Break point %d set at %s\n",bp_count,show(addr));
         }else if(strcmp(command,"c")==0){//continue
-
-
+            long rip=get_regs(pid).rip;
+            reset_bp(pid,rip);
+            ptrace(PTRACE_SINGLESTEP,pid,NULL,NULL);
+            wait(&status);
+            set_bp(pid,rip);
+            ptrace(PTRACE_CONT,pid,NULL,NULL);
+            wait(&status);
         }else if(strcmp(command,"q")==0){//quit
+            exit(0);
         }else if(strcmp(command,"s")==0){//step
+            long rip=get_regs(pid).rip;
+            reset_bp(pid,rip);
+            ptrace(PTRACE_SINGLESTEP,pid,NULL,NULL);
+            wait(&status);
+            set_bp(pid,rip);
         }else if(strcmp(command,"r")==0){//show registers
-        }else if(strcmp(command,"p")==0){//print 32bit memory
+            struct user_regs_struct regs=get_regs(pid);
+            printf("rax=%s\n",show(regs.rax));
+            printf("rbx=%s\n",show(regs.rbx));
+            printf("rcx=%s\n",show(regs.rcx));
+            printf("rdx=%s\n",show(regs.rdx));
+            printf("rsi=%s\n",show(regs.rsi));
+            printf("rdi=%s\n",show(regs.rdi));
+            printf("rbp=%s\n",show(regs.rbp));
+            printf("rsp=%s\n",show(regs.rsp));
+            printf("r8=%s\n",show(regs.r8));
+            printf("r9=%s\n",show(regs.r9));
+            printf("r10=%s\n",show(regs.r10));
+            printf("r11=%s\n",show(regs.r11));
+            printf("r12=%s\n",show(regs.r12));
+            printf("r13=%s\n",show(regs.r13));
+            printf("r14=%s\n",show(regs.r14));
+            printf("r15=%s\n",show(regs.r15));
+            printf("rip=%s\n",show(regs.rip));
+            printf("eflags=%s\n",show(regs.eflags));
+        }else if(strcmp(command,"p")==0){//print 64bit memory
+            scanf("%s",arg);
+            long addr=parse(arg);
+            if(addr==0){
+                printf("Unknown address: %s\n",arg);
+                continue;
+            }
+            long data=ptrace(PTRACE_PEEKTEXT,pid,addr,NULL);
+            printf("Data at %s is %s\n",show(addr),show(data));
+        }else if(strcmp(command,"t")==0){//print call stack
 
         }else{
             printf("b: set break point\n");
@@ -120,7 +187,7 @@ int main(int argc,char **argv){
             printf("q: quit\n");
             printf("s: step one instruction\n");
             printf("r: show registers\n");
-            printf("p: print 32bit memory\n");
+            printf("p: print 64bit memory\n");
         }
     }
     return 0;

@@ -3,6 +3,7 @@
 int a;
 
 int main(){
-    a=1;
+    a=7;
+    printf("%d\n",a);
     return a;
 }
