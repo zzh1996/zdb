@@ -128,6 +128,7 @@ int main(int argc,char **argv){
         }
 
         char command[256],arg[256];
+        printf("(zdb) ");
         scanf("%s",command);
         if(strcmp(command,"b")==0){//set break point
             scanf("%s",arg);
