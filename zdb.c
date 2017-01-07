@@ -8,6 +8,8 @@
 #include <stdlib.h>
 #include <string.h>
 
+#define TEXT_OFFSET 0x555555554000
+
 struct symbol{
     char *name;
     long addr;
@@ -40,7 +42,7 @@ void load_symbols(char *path){
     symbol_table=malloc(count*sizeof(struct symbol));
     for(int i=0;i<count;i++){
         symbol_table[i].name=bfd_asymbol_name(symbols[i]);
-        symbol_table[i].addr=bfd_asymbol_value(symbols[i])+0x555555554000;
+        symbol_table[i].addr=bfd_asymbol_value(symbols[i])+TEXT_OFFSET;
     }
     symbol_count=count;
 }
