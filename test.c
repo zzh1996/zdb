@@ -1,9 +1,13 @@
-#include<stdio.h>
+#include <stdio.h>
 
-int a;
+int i;
+
+void f(){
+    printf("Loop %d\n",i);
+}
 
 int main(){
-    a=7;
-    printf("%d\n",a);
-    return a;
+    for(i=0;i<10;i++)
+        f();
+    return 0;
 }
