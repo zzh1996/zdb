@@ -96,6 +96,10 @@ void reset_bp(pid_t pid,long addr){
 }
 
 int main(int argc,char **argv){
+    if(argc!=2){
+        printf("Usage: zdb <executable>\n");
+        exit(0);
+    }
     pid_t pid;
     pid=fork();
     if(pid==0){
